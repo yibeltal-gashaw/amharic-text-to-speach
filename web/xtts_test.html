@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>XTTS v2 Studio</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "Noto Sans", "Segoe UI", sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 32px;
+        background: linear-gradient(135deg, #f2f6f0, #e6efe6);
+        color: #1b1b1b;
+      }
+      .wrap {
+        max-width: 920px;
+        margin: 0 auto;
+      }
+      .panel {
+        background: #f9fbf6;
+        border: 1px solid #d6e2d1;
+        border-radius: 18px;
+        padding: 26px;
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.12);
+      }
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: #2f6f4d;
+        color: #fff;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.4px;
+        text-transform: uppercase;
+      }
+      h1 {
+        margin: 0 0 4px 0;
+        font-size: 30px;
+      }
+      p {
+        margin: 0 0 16px 0;
+        color: #3c4a3d;
+      }
+      label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+      textarea,
+      input,
+      select {
+        width: 100%;
+        box-sizing: border-box;
+        font-size: 16px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid #b7c7b4;
+        background: #fff;
+      }
+      textarea {
+        min-height: 120px;
+        resize: vertical;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 12px;
+        margin-top: 12px;
+      }
+      .row.two {
+        grid-template-columns: 1fr 1fr;
+      }
+      .row.single {
+        grid-template-columns: 1fr;
+      }
+      .status {
+        margin-top: 12px;
+        font-size: 14px;
+        color: #4c5a4d;
+      }
+      .error {
+        color: #8a1f1f;
+      }
+      button {
+        margin-top: 18px;
+        background: #2f6f4d;
+        color: #fff;
+        border: none;
+        padding: 12px 18px;
+        border-radius: 10px;
+        font-size: 16px;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      audio {
+        width: 100%;
+        margin-top: 16px;
+      }
+      @media (max-width: 760px) {
+        body {
+          padding: 20px;
+        }
+        .row,
+        .row.two {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="panel">
+        <div class="header">
+          <div>
+            <h1>XTTS v2 Studio</h1>
+            <p>High-quality multilingual TTS with optional voice cloning.</p>
+          </div>
+          <span class="badge">XTTS v2</span>
+        </div>
+
+        <label for="text">Text</label>
+        <textarea id="text">Hello, how are you doing today?</textarea>
+
+        <div class="row">
+          <div>
+            <label for="endpoint">Endpoint</label>
+            <input id="endpoint" value="http://localhost:8001/v1" />
+          </div>
+          <div>
+            <label for="language">Language</label>
+            <input id="language" value="en" />
+          </div>
+          <div>
+            <label for="speaker">Speaker (optional)</label>
+            <select id="speaker">
+              <option value="">None</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row two">
+          <div>
+            <label for="speakerWav">Speaker WAV (optional)</label>
+            <input id="speakerWav" type="file" accept="audio/wav" />
+          </div>
+          <div>
+            <label for="splitSentences">Split Sentences</label>
+            <select id="splitSentences">
+              <option value="true">True</option>
+              <option value="false">False</option>
+            </select>
+          </div>
+        </div>
+
+        <button id="speak">Generate Speech</button>
+        <div id="status" class="status"></div>
+        <audio id="player" controls></audio>
+      </div>
+    </div>
+
+    <script>
+      const textEl = document.getElementById("text");
+      const endpointEl = document.getElementById("endpoint");
+      const languageEl = document.getElementById("language");
+      const speakerEl = document.getElementById("speaker");
+      const speakerWavEl = document.getElementById("speakerWav");
+      const splitEl = document.getElementById("splitSentences");
+      const speakBtn = document.getElementById("speak");
+      const statusEl = document.getElementById("status");
+      const player = document.getElementById("player");
+
+      function setStatus(message, isError) {
+        statusEl.textContent = message || "";
+        statusEl.classList.toggle("error", Boolean(isError));
+      }
+
+      async function loadVoices() {
+        const base = endpointEl.value.trim().replace(/\/$/, "");
+        try {
+          const res = await fetch(`${base}/voices`);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          const speakers = data.speakers || [];
+          speakerEl.innerHTML = "<option value=''>None</option>";
+          speakers.forEach((s) => {
+            const opt = document.createElement("option");
+            opt.value = s;
+            opt.textContent = s;
+            speakerEl.appendChild(opt);
+          });
+        } catch (err) {
+          speakerEl.innerHTML = "<option value=''>None</option>";
+        }
+      }
+
+      async function fileToBase64(file) {
+        const buffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
+        bytes.forEach((b) => (binary += String.fromCharCode(b)));
+        return btoa(binary);
+      }
+
+      speakBtn.addEventListener("click", async () => {
+        const text = textEl.value.trim();
+        if (!text) {
+          setStatus("Please enter some text.", true);
+          return;
+        }
+
+        speakBtn.disabled = true;
+        setStatus("Generating audio...");
+
+        try {
+          const payload = {
+            text,
+            language: languageEl.value.trim() || "en",
+            split_sentences: splitEl.value === "true",
+          };
+
+          const speakerValue = speakerEl.value.trim();
+          if (speakerValue) {
+            payload.speaker = speakerValue;
+          }
+
+          const file = speakerWavEl.files[0];
+          if (file) {
+            payload.speaker_wav_base64 = await fileToBase64(file);
+          }
+
+          const base = endpointEl.value.trim().replace(/\/$/, "");
+          const res = await fetch(`${base}/text-to-speech/xtts-default`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(text || `HTTP ${res.status}`);
+          }
+
+          const blob = await res.blob();
+          const objectUrl = URL.createObjectURL(blob);
+          player.src = objectUrl;
+          await player.play();
+          setStatus("Done.");
+        } catch (err) {
+          setStatus(`Error: ${err.message}`, true);
+        } finally {
+          speakBtn.disabled = false;
+        }
+      });
+
+      endpointEl.addEventListener("change", loadVoices);
+      loadVoices();
+    </script>
+  </body>
+</html>

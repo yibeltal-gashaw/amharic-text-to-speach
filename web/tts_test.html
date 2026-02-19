@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Amharic TTS Test</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "Noto Serif", "Georgia", serif;
+      }
+      body {
+        margin: 0;
+        padding: 32px;
+        background: linear-gradient(135deg, #f7f1e6, #efe1c6);
+        color: #1b1b1b;
+      }
+      body::before {
+        content: "";
+        position: fixed;
+        inset: -20% -20% auto auto;
+        width: 55vmax;
+        height: 55vmax;
+        background: radial-gradient(circle, rgba(31, 90, 79, 0.18), rgba(31, 90, 79, 0));
+        z-index: -1;
+      }
+      .card {
+        max-width: 860px;
+        margin: 0 auto;
+        background: linear-gradient(135deg, #fffaf0, #f6efe1);
+        border: 1px solid rgba(199, 187, 165, 0.8);
+        border-radius: 20px;
+        padding: 28px;
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.14);
+      }
+      h1 {
+        margin: 0 0 6px 0;
+        font-size: 30px;
+        letter-spacing: 0.4px;
+      }
+      p {
+        margin: 0 0 18px 0;
+        color: #3a342c;
+      }
+      label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+      textarea,
+      .text-input,
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        font-size: 16px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid #c7bba5;
+        background: #fff;
+      }
+      textarea,
+      .text-input {
+        min-height: 120px;
+        resize: vertical;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 1.1fr 0.7fr;
+        gap: 12px;
+        margin-top: 14px;
+      }
+      .row.three {
+        grid-template-columns: 1.1fr 0.7fr 0.6fr 0.6fr;
+      }
+      .row.four {
+        grid-template-columns: 0.7fr 1.1fr 0.7fr 0.6fr 0.6fr;
+      }
+      button {
+        margin-top: 18px;
+        background: #1f5a4f;
+        color: #fff;
+        border: none;
+        padding: 12px 18px;
+        border-radius: 10px;
+        font-size: 16px;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      audio {
+        width: 100%;
+        margin-top: 16px;
+      }
+      .status {
+        margin-top: 12px;
+        font-size: 14px;
+        color: #5b5347;
+      }
+      .error {
+        color: #8a1f1f;
+      }
+      .text-input {
+        line-height: 1.7;
+        white-space: pre-wrap;
+        outline: none;
+      }
+      .text-input span {
+        padding: 2px 4px;
+        border-radius: 6px;
+        transition: background 120ms ease;
+      }
+      .active-word {
+        background: #ffe29a;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: #1f5a4f;
+        color: #fff;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.4px;
+        text-transform: uppercase;
+      }
+      .header-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+      .voice-meta {
+        margin-top: 8px;
+        font-size: 13px;
+        color: #5b5347;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 16px;
+      }
+      @media (max-width: 720px) {
+        .row,
+        .row.three {
+          grid-template-columns: 1fr;
+        }
+        body {
+          padding: 20px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="header-row">
+        <div>
+          <h1>Amharic TTS Studio</h1>
+          <p>Test and compare voices against your ElevenLabs-style backend.</p>
+        </div>
+        <span class="pill">Local</span>
+      </div>
+
+      <div class="grid">
+        <div>
+          <label for="textInput">Text</label>
+          <div id="textInput" class="text-input" contenteditable="true">ሰላም እንዴት ነህ?</div>
+        </div>
+      </div>
+
+      <div class="row four">
+        <div>
+          <label for="langFilter">Language</label>
+          <select id="langFilter"></select>
+        </div>
+        <div>
+          <label for="voice">Voice</label>
+          <select id="voice"></select>
+          <div id="voiceMeta" class="voice-meta"></div>
+        </div>
+        <div>
+          <label for="endpoint">Endpoint</label>
+          <input id="endpoint" value="http://localhost:8000/v1" />
+        </div>
+        <div>
+          <label for="seed">Seed (optional)</label>
+          <input id="seed" type="number" placeholder="e.g. 42" />
+        </div>
+        <div>
+          <label for="stream">Streaming</label>
+          <select id="stream">
+            <option value="off">Off</option>
+            <option value="on">On</option>
+          </select>
+        </div>
+      </div>
+
+      <button id="speak">Generate Speech</button>
+      <div id="status" class="status"></div>
+      <audio id="player" controls></audio>
+    </div>
+
+    <script>
+      const speakBtn = document.getElementById("speak");
+      const textEl = document.getElementById("textInput");
+      const voiceEl = document.getElementById("voice");
+      const voiceMetaEl = document.getElementById("voiceMeta");
+      const endpointEl = document.getElementById("endpoint");
+      const streamEl = document.getElementById("stream");
+      const langFilterEl = document.getElementById("langFilter");
+      let allVoices = [];
+      const seedEl = document.getElementById("seed");
+      const statusEl = document.getElementById("status");
+      const player = document.getElementById("player");
+      let lastPlainText = "";
+
+      function setStatus(message, isError) {
+        statusEl.textContent = message || "";
+        statusEl.classList.toggle("error", Boolean(isError));
+      }
+
+      function buildWordTimings(text, totalSeconds) {
+        const words = text.trim().split(/\s+/);
+        if (words.length === 0 || !Number.isFinite(totalSeconds) || totalSeconds <= 0) {
+          return [];
+        }
+        const weights = words.map((w) => Math.max(1, w.length));
+        const totalWeight = weights.reduce((a, b) => a + b, 0);
+        let t = 0;
+        return words.map((w, i) => {
+          const dur = (weights[i] / totalWeight) * totalSeconds;
+          const start = t;
+          t += dur;
+          return { word: w, start, end: t };
+        });
+      }
+
+      function renderWords(container, timings) {
+        container.innerHTML = "";
+        timings.forEach((t, i) => {
+          const span = document.createElement("span");
+          span.textContent = t.word + " ";
+          span.dataset.index = i;
+          container.appendChild(span);
+        });
+      }
+
+      function highlightWord(container, timings, currentTime) {
+        if (!timings.length) return;
+        let idx = timings.findIndex(
+          (t) => currentTime >= t.start && currentTime < t.end
+        );
+        if (idx < 0) idx = timings.length - 1;
+        [...container.children].forEach((el, i) => {
+          el.classList.toggle("active-word", i === idx);
+        });
+      }
+
+      function getInputText() {
+        return textEl.innerText.replace(/\s+/g, " ").trim();
+      }
+
+      function setEditable(isEditable) {
+        textEl.setAttribute("contenteditable", String(isEditable));
+      }
+
+      function populateLanguageFilter(voices) {
+        const langs = Array.from(new Set(voices.map((v) => v.language_code).filter(Boolean))).sort();
+        langFilterEl.innerHTML = "";
+        const allOpt = document.createElement("option");
+        allOpt.value = "all";
+        allOpt.textContent = "All";
+        langFilterEl.appendChild(allOpt);
+        langs.forEach((lang) => {
+          const opt = document.createElement("option");
+          opt.value = lang;
+          opt.textContent = lang.toUpperCase();
+          langFilterEl.appendChild(opt);
+        });
+      }
+
+      function populateVoices(voices) {
+        voiceEl.innerHTML = "";
+        voices.forEach((voice) => {
+          const opt = document.createElement("option");
+          opt.value = voice.voice_id;
+          opt.textContent = voice.name || voice.voice_id;
+          opt.dataset.meta = voice.description || "";
+          opt.dataset.lang = voice.language_code || "";
+          opt.dataset.model = voice.model_id || "";
+          voiceEl.appendChild(opt);
+        });
+        if (voices.length > 0) {
+          voiceEl.value = voices[0].voice_id;
+          updateVoiceMeta();
+        }
+      }
+
+      async function loadVoices() {
+        const base = endpointEl.value.trim().replace(/\/$/, "");
+        const url = `${base}/voices`;
+        try {
+          const res = await fetch(url);
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+          }
+          const data = await res.json();
+          allVoices = data.voices || [];
+          populateLanguageFilter(allVoices);
+          applyLanguageFilter();
+        } catch (err) {
+          allVoices = [
+            {
+              voice_id: "amh-default",
+              name: "Amharic Default",
+              language_code: "amh",
+              model_id: "facebook/mms-tts-amh",
+              description: "",
+            },
+          ];
+          populateLanguageFilter(allVoices);
+          applyLanguageFilter();
+        }
+      }
+
+      function updateVoiceMeta() {
+        const option = voiceEl.selectedOptions[0];
+        if (!option) {
+          voiceMetaEl.textContent = "";
+          return;
+        }
+        const parts = [];
+        if (option.dataset.lang) parts.push(`Lang: ${option.dataset.lang}`);
+        if (option.dataset.model) parts.push(`Model: ${option.dataset.model}`);
+        if (option.dataset.meta) parts.push(option.dataset.meta);
+        voiceMetaEl.textContent = parts.join(" · ");
+      }
+
+      voiceEl.addEventListener("change", updateVoiceMeta);
+      endpointEl.addEventListener("change", loadVoices);
+      langFilterEl.addEventListener("change", applyLanguageFilter);
+
+      function applyLanguageFilter() {
+        const selectedLang = langFilterEl.value || "all";
+        const filtered =
+          selectedLang === "all"
+            ? allVoices
+            : allVoices.filter((v) => v.language_code === selectedLang);
+        if (filtered.length === 0 && allVoices.length > 0) {
+          populateVoices(allVoices);
+        } else {
+          populateVoices(filtered);
+        }
+      }
+
+      speakBtn.addEventListener("click", async () => {
+        const text = getInputText();
+        if (!text) {
+          setStatus("Please enter some text.", true);
+          return;
+        }
+        lastPlainText = text;
+
+        const payload = { text };
+        const seedValue = seedEl.value.trim();
+        if (seedValue) {
+          payload.seed = Number(seedValue);
+        }
+
+        speakBtn.disabled = true;
+        setStatus("Generating audio...");
+
+        try {
+          const base = endpointEl.value.trim().replace(/\/$/, "");
+          const voiceId = voiceEl.value || "amh-default";
+          const isStreaming = streamEl.value === "on";
+          const path = isStreaming ? "text-to-speech/" + voiceId + "/stream" : "text-to-speech/" + voiceId;
+          const url = `${base}/${path}`;
+          const res = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(text || `HTTP ${res.status}`);
+          }
+
+          const blob = await res.blob();
+          const objectUrl = URL.createObjectURL(blob);
+          player.src = objectUrl;
+          player.onloadedmetadata = () => {
+            const timings = buildWordTimings(text, player.duration);
+            setEditable(false);
+            renderWords(textEl, timings);
+            const tick = () => {
+              if (!player.paused) {
+                highlightWord(textEl, timings, player.currentTime);
+              }
+              requestAnimationFrame(tick);
+            };
+            tick();
+          };
+          await player.play();
+          setStatus("Done.");
+        } catch (err) {
+          setStatus(`Error: ${err.message}`, true);
+          if (lastPlainText) {
+            textEl.textContent = lastPlainText;
+            setEditable(true);
+          }
+        } finally {
+          speakBtn.disabled = false;
+        }
+      });
+
+      player.addEventListener("ended", () => {
+        if (lastPlainText) {
+          textEl.textContent = lastPlainText;
+          setEditable(true);
+        }
+      });
+
+      loadVoices();
+    </script>
+  </body>
+</html>
