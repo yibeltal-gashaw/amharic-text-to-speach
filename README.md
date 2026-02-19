@@ -19,6 +19,21 @@ Make written Amharic sound natural and clear. This project provides an end-to-en
 2. Start the web app.
 3. Open the web UI and try a short Amharic phrase.
 
+## Run Commands
+
+```powershell
+# 1) install backend dependencies
+pip install fastapi uvicorn torch transformers pydantic
+
+# optional: better Amharic romanization support
+pip install uroman
+
+# 2) run API (http://localhost:8000)
+uvicorn speech:app --host 0.0.0.0 --port 8000 --reload
+
+# 3) run web (tts_test.html) 
+```
+
 ## Goals
 
 - Produce intelligible, natural-sounding Amharic speech.
