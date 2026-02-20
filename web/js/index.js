@@ -10,10 +10,30 @@ const seedEl = document.getElementById("seed");
 const statusEl = document.getElementById("status");
 const player = document.getElementById("player");
 let lastPlainText = "";
+const sttFileEl = document.getElementById("sttFile");
+const sttModelEl = document.getElementById("sttModel");
+const sttEndpointEl = document.getElementById("sttEndpoint");
+const sttBtn = document.getElementById("transcribe");
+const sttStatusEl = document.getElementById("sttStatus");
+const sttOutputEl = document.getElementById("sttOutput");
+const sttSectionEl = document.getElementById("sttSection");
+const ttsSectionEl = document.getElementById("ttsSection");
+const ttsCardEl = document.getElementById("ttsCard");
+const sttCardEl = document.getElementById("sttCard");
+const showTtsBtn = document.getElementById("showTts");
+const showSttBtn = document.getElementById("showStt");
+const ACTIVE_UI_KEY = "active_ui";
+const playUploadBtn = document.getElementById("playUpload");
+const sttPlayer = document.getElementById("sttPlayer");
 
 function setStatus(message, isError) {
   statusEl.textContent = message || "";
   statusEl.classList.toggle("error", Boolean(isError));
+}
+
+function setSttStatus(message, isError) {
+  sttStatusEl.textContent = message || "";
+  sttStatusEl.classList.toggle("error", Boolean(isError));
 }
 
 function buildWordTimings(text, totalSeconds) {
@@ -228,3 +248,82 @@ player.addEventListener("ended", () => {
 });
 
 loadVoices();
+
+function setActiveUi(active) {
+  const showStt = active === "stt";
+  sttSectionEl.classList.toggle("hidden", !showStt);
+  ttsSectionEl.classList.toggle("hidden", showStt);
+  sttCardEl.classList.toggle("hidden", !showStt);
+  ttsCardEl.classList.toggle("hidden", showStt);
+  showTtsBtn.classList.toggle("active", !showStt);
+  showSttBtn.classList.toggle("active", showStt);
+  localStorage.setItem(ACTIVE_UI_KEY, active);
+}
+
+const saved = localStorage.getItem(ACTIVE_UI_KEY);
+setActiveUi(saved === "stt" ? "stt" : "tts");
+
+showTtsBtn.addEventListener("click", () => setActiveUi("tts"));
+showSttBtn.addEventListener("click", () => setActiveUi("stt"));
+
+function updateUploadedAudioPreview() {
+  const file = sttFileEl.files && sttFileEl.files[0];
+  if (!file) {
+    sttPlayer.removeAttribute("src");
+    return;
+  }
+  const objectUrl = URL.createObjectURL(file);
+  sttPlayer.src = objectUrl;
+}
+
+sttFileEl.addEventListener("change", updateUploadedAudioPreview);
+
+playUploadBtn.addEventListener("click", () => {
+  if (!sttPlayer.src) {
+    updateUploadedAudioPreview();
+  }
+  if (sttPlayer.src) {
+    sttPlayer.play();
+  } else {
+    setSttStatus("Please choose an audio file to play.", true);
+  }
+});
+
+sttBtn.addEventListener("click", async () => {
+  const file = sttFileEl.files && sttFileEl.files[0];
+  if (!file) {
+    setSttStatus("Please choose an audio file.", true);
+    return;
+  }
+
+  const base = sttEndpointEl.value.trim().replace(/\/$/, "");
+  const modelId = sttModelEl.value.trim();
+  const url = modelId
+    ? `${base}/speech-to-text?model_id=${encodeURIComponent(modelId)}`
+    : `${base}/speech-to-text`;
+
+  const form = new FormData();
+  form.append("audio", file);
+
+  sttBtn.disabled = true;
+  setSttStatus("Transcribing...");
+  sttOutputEl.value = "";
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      body: form,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    sttOutputEl.value = data.text || "";
+    setSttStatus("Done.");
+  } catch (err) {
+    setSttStatus(`Error: ${err.message}`, true);
+  } finally {
+    sttBtn.disabled = false;
+  }
+});

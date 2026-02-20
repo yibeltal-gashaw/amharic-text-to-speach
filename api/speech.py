@@ -1,22 +1,25 @@
 import io
 import logging
 import os
+import tempfile
 import wave
 from functools import lru_cache
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import torch
-from fastapi import Body, FastAPI, Path, Query
+import torchaudio
+from fastapi import Body, FastAPI, File, HTTPException, Path, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
-from transformers import AutoTokenizer, VitsModel, set_seed
+from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, AutoTokenizer, VitsModel, set_seed
 
 logger = logging.getLogger("mms_tts")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 
 DEFAULT_MODEL_ID = "facebook/mms-tts-amh"
 DEFAULT_VOICE_ID = "amh-default"
+DEFAULT_STT_MODEL_ID = "b1n1yam/shook-medium-amharic-2k"
 VOICE_CATALOG = [
     {
         "voice_id": "amh-default",
@@ -87,6 +90,24 @@ def _chunk_bytes(data: bytes, chunk_size: int):
         yield data[idx : idx + chunk_size]
 
 
+def _load_audio(path: str) -> Tuple[torch.Tensor, int]:
+    try:
+        speech_array, sampling_rate = torchaudio.load(path)
+        if speech_array.ndim > 1:
+            speech_array = speech_array.mean(dim=0)
+        return speech_array, int(sampling_rate)
+    except Exception as exc:
+        try:
+            import soundfile as sf  # type: ignore
+        except Exception as import_exc:
+            raise RuntimeError(
+                "Audio decode failed. Install `torchcodec` or `soundfile` to enable decoding."
+            ) from import_exc
+        data, sampling_rate = sf.read(path, always_2d=True)
+        data = data.mean(axis=1)
+        return torch.from_numpy(data), int(sampling_rate)
+
+
 @lru_cache(maxsize=1)
 def _load_model(model_id: str):
     tokenizer = AutoTokenizer.from_pretrained(model_id)
@@ -97,6 +118,16 @@ def _load_model(model_id: str):
     return tokenizer, model, device
 
 
+@lru_cache(maxsize=1)
+def _load_stt_model(model_id: str):
+    processor = AutoProcessor.from_pretrained(model_id)
+    model = AutoModelForSpeechSeq2Seq.from_pretrained(model_id)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    model.eval()
+    return processor, model, device
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -105,6 +136,45 @@ def health():
 @app.get("/v1/voices")
 def voices():
     return {"voices": VOICE_CATALOG}
+
+
+@app.post("/v1/speech-to-text")
+async def speech_to_text(
+    audio: UploadFile = File(..., description="Audio file (wav, mp3, flac, etc.)"),
+    model_id: str = Query(DEFAULT_STT_MODEL_ID, description="Speech-to-text model id"),
+):
+    processor, model, device = _load_stt_model(model_id)
+
+    raw = await audio.read()
+    if not raw:
+        return {"text": "", "model_id": model_id}
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(audio.filename or "")[1] or ".wav")
+    try:
+        tmp.write(raw)
+        tmp.flush()
+        tmp.close()
+        
+        try:
+            speech_tensor, sampling_rate = _load_audio(tmp.name)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        speech_array = speech_tensor.numpy()
+
+        inputs = processor(speech_array, sampling_rate=sampling_rate, return_tensors="pt")
+        inputs = {k: v.to(device) for k, v in inputs.items()}
+
+        with torch.no_grad():
+            generated_ids = model.generate(**inputs)
+
+        text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+        return {"text": text, "model_id": model_id}
+    finally:
+        if os.path.exists(tmp.name):
+            try:
+                os.unlink(tmp.name)
+            except OSError:
+                logger.warning("Failed to delete temp audio file: %s", tmp.name)
 
 
 @app.post("/v1/text-to-speech/{voice_id}")
@@ -186,6 +256,7 @@ def root():
         "endpoints": {
             "tts": "/v1/text-to-speech/{voice_id}",
             "tts_stream": "/v1/text-to-speech/{voice_id}/stream",
+            "stt": "/v1/speech-to-text",
             "health": "/health",
         },
         "notes": "This is an ElevenLabs-style TTS endpoint backed by facebook/mms-tts-amh.",

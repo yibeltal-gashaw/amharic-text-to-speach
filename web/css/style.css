@@ -4,7 +4,7 @@
 }
 body {
   margin: 0;
-  padding: 32px;
+  padding: 0;
   background: linear-gradient(135deg, #f7f1e6, #efe1c6);
   color: #1b1b1b;
 }
@@ -23,7 +23,7 @@ body::before {
 }
 .card {
   max-width: 860px;
-  margin: 0 auto;
+  margin: 0;
   background: linear-gradient(135deg, #fffaf0, #f6efe1);
   border: 1px solid rgba(199, 187, 165, 0.8);
   border-radius: 20px;
@@ -34,6 +34,11 @@ h1 {
   margin: 0 0 6px 0;
   font-size: 30px;
   letter-spacing: 0.4px;
+}
+h2 {
+  margin: 18px 0 6px 0;
+  font-size: 22px;
+  letter-spacing: 0.2px;
 }
 p {
   margin: 0 0 18px 0;
@@ -140,12 +145,101 @@ audio {
   grid-template-columns: 1fr;
   gap: 16px;
 }
+.app {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  min-height: 100vh;
+}
+.sidebar {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  padding: 28px 22px;
+  background: linear-gradient(180deg, #1f5a4f, #173f38);
+  color: #f8f4e8;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.brand {
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  font-size: 14px;
+}
+.nav {
+  display: grid;
+  gap: 10px;
+}
+.nav a,
+.nav button {
+  color: #f8f4e8;
+  text-decoration: none;
+  font-weight: 600;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  text-align: left;
+  cursor: pointer;
+}
+.nav button.active {
+  background: rgba(255, 255, 255, 0.28);
+  color: #0f2f2a;
+}
+.nav a:hover,
+.nav button:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+.sidebar-footer {
+  margin-top: auto;
+  font-size: 12px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+.content {
+  padding: 32px;
+}
+.divider {
+  height: 1px;
+  background: rgba(199, 187, 165, 0.8);
+  margin: 22px 0;
+}
+.hidden {
+  display: none;
+}
+.stt {
+  margin-top: 14px;
+}
+.tts {
+  display: block;
+}
 @media (max-width: 720px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    position: static;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .nav {
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+    gap: 8px;
+  }
+  .content {
+    padding: 20px;
+  }
   .row,
   .row.three {
     grid-template-columns: 1fr;
   }
   body {
-    padding: 20px;
+    padding: 0;
   }
 }

@@ -7,52 +7,101 @@
     <link rel="stylesheet" href="./css/style.css">
   </head>
   <body>
-    <div class="card">
-      <div class="header-row">
-        <div>
-          <h1>Amharic TTS Studio</h1>
-          <p>Test and compare voices against your ElevenLabs-style backend.</p>
-        </div>
-        <span class="pill">Local</span>
-      </div>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">Amharic Studio</div>
+        <nav class="nav">
+          <button id="showTts" type="button">Text to Speech</button>
+          <button id="showStt" type="button">Speech to Text</button>
+        </nav>
+        <div class="sidebar-footer">Local</div>
+      </aside>
 
-      <div class="grid">
-        <div>
-          <label for="textInput">Text</label>
-          <div id="textInput" class="text-input" contenteditable="true">ሰላም እንዴት ነህ?</div>
-        </div>
-      </div>
+      <main class="content">
+        <div class="card" id="ttsCard">
+          <section id="ttsSection" class="tts">
+            <div class="header-row">
+              <div>
+                <h1>Amharic TTS Studio</h1>
+                <p>Test and compare voices against your ElevenLabs-style backend.</p>
+              </div>
+              <span class="pill">Local</span>
+            </div>
 
-      <div class="row four">
-        <div>
-          <label for="langFilter">Language</label>
-          <select id="langFilter"></select>
-        </div>
-        <div>
-          <label for="voice">Voice</label>
-          <select id="voice"></select>
-          <div id="voiceMeta" class="voice-meta"></div>
-        </div>
-        <div>
-          <label for="endpoint">Endpoint</label>
-          <input id="endpoint" value="http://localhost:8000/v1" />
-        </div>
-        <div>
-          <label for="seed">Seed (optional)</label>
-          <input id="seed" type="number" placeholder="e.g. 42" />
-        </div>
-        <div>
-          <label for="stream">Streaming</label>
-          <select id="stream">
-            <option value="off">Off</option>
-            <option value="on">On</option>
-          </select>
-        </div>
-      </div>
+            <div class="grid">
+              <div>
+                <label for="textInput">Text</label>
+                <div id="textInput" class="text-input" contenteditable="true">áˆ°áˆ‹áˆ áŠ¥áŠ•á‹´á‰µ áŠáˆ…?</div>
+              </div>
+            </div>
 
-      <button id="speak">Generate Speech</button>
-      <div id="status" class="status"></div>
-      <audio id="player" controls></audio>
+            <div class="row four">
+              <div>
+                <label for="langFilter">Language</label>
+                <select id="langFilter"></select>
+              </div>
+              <div>
+                <label for="voice">Voice</label>
+                <select id="voice"></select>
+                <div id="voiceMeta" class="voice-meta"></div>
+              </div>
+              <div>
+                <label for="endpoint">Endpoint</label>
+                <input id="endpoint" value="http://localhost:8000/v1" />
+              </div>
+              <div>
+                <label for="seed">Seed (optional)</label>
+                <input id="seed" type="number" placeholder="e.g. 42" />
+              </div>
+              <div>
+                <label for="stream">Streaming</label>
+                <select id="stream">
+                  <option value="off">Off</option>
+                  <option value="on">On</option>
+                </select>
+              </div>
+            </div>
+
+            <button id="speak">Generate Speech</button>
+            <div id="status" class="status"></div>
+            <audio id="player" controls></audio>
+          </section>
+        </div>
+
+        <div class="card hidden" id="sttCard">
+          <section id="sttSection" class="stt">
+            <div id="stt"></div>
+            <h2>Speech to Text</h2>
+            <p>Upload an audio file to transcribe using the backend STT endpoint.</p>
+
+            <div class="row three">
+              <div>
+                <label for="sttFile">Audio File</label>
+                <input id="sttFile" type="file" accept="audio/*" />
+              </div>
+              <div>
+                <label for="sttModel">Model (optional)</label>
+                <input
+                  id="sttModel"
+                  value="b1n1yam/shook-medium-amharic-2k"
+                  placeholder="Model id"
+                />
+              </div>
+              <div>
+                <label for="sttEndpoint">Endpoint</label>
+                <input id="sttEndpoint" value="http://localhost:8000/v1" />
+              </div>
+            </div>
+
+            <button id="playUpload" type="button">Play Uploaded Audio</button>
+            <audio id="sttPlayer" controls></audio>
+            <button id="transcribe">Transcribe Audio</button>
+            <div id="sttStatus" class="status"></div>
+            <label for="sttOutput">Transcription</label>
+            <textarea id="sttOutput" rows="5" readonly></textarea>
+          </section>
+        </div>
+      </main>
     </div>
 
     <script src="./js/index.js"></script>
