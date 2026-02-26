@@ -11,7 +11,7 @@ import torchaudio
 from fastapi import Body, FastAPI, File, HTTPException, Path, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, AutoTokenizer, VitsModel, set_seed
 
 logger = logging.getLogger("mms_tts")
@@ -20,6 +20,8 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 DEFAULT_MODEL_ID = "facebook/mms-tts-amh"
 DEFAULT_VOICE_ID = "amh-default"
 DEFAULT_STT_MODEL_ID = "b1n1yam/shook-medium-amharic-2k"
+MAX_TEXT_LENGTH = int(os.getenv("MAX_TEXT_LENGTH", "5000"))
+
 VOICE_CATALOG = [
     {
         "voice_id": "amh-default",
@@ -39,7 +41,7 @@ VOICE_CATALOG = [
 
 
 class TTSRequest(BaseModel):
-    text: str = Field(..., min_length=1)
+    text: str = Field(..., min_length=1, max_length=MAX_TEXT_LENGTH)
     model_id: Optional[str] = None
     language_code: Optional[str] = None
     voice_settings: Optional[Dict[str, Any]] = None
@@ -49,9 +51,9 @@ class TTSRequest(BaseModel):
 app = FastAPI(title="Amharic TTS Backend", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
+    allow_origins=os.getenv("ALLOWED_ORIGINS", "*").split(","),
+    allow_credentials=os.getenv("ALLOW_CREDENTIALS", "false").lower() == "true",
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -104,7 +106,7 @@ def _load_audio(path: str) -> Tuple[torch.Tensor, int]:
                 "Audio decode failed. Install `torchcodec` or `soundfile` to enable decoding."
             ) from import_exc
         data, sampling_rate = sf.read(path, always_2d=True)
-        data = data.mean(axis=1)
+        data = data.copy().mean(axis=1)  # Explicit copy to avoid in-place modification
         return torch.from_numpy(data), int(sampling_rate)
 
 
@@ -147,10 +149,11 @@ async def speech_to_text(
 
     raw = await audio.read()
     if not raw:
-        return {"text": "", "model_id": model_id}
+        raise HTTPException(status_code=400, detail="Empty audio file provided")
 
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(audio.filename or "")[1] or ".wav")
+    tmp = None
     try:
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(audio.filename or "")[1] or ".wav")
         tmp.write(raw)
         tmp.flush()
         tmp.close()
@@ -159,6 +162,7 @@ async def speech_to_text(
             speech_tensor, sampling_rate = _load_audio(tmp.name)
         except RuntimeError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        
         speech_array = speech_tensor.numpy()
 
         inputs = processor(speech_array, sampling_rate=sampling_rate, return_tensors="pt")
@@ -170,7 +174,7 @@ async def speech_to_text(
         text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
         return {"text": text, "model_id": model_id}
     finally:
-        if os.path.exists(tmp.name):
+        if tmp is not None and os.path.exists(tmp.name):
             try:
                 os.unlink(tmp.name)
             except OSError:
@@ -187,16 +191,20 @@ def text_to_speech(
         logger.info("Unknown voice_id '%s'; using default voice", voice_id)
 
     selected = next((v for v in VOICE_CATALOG if v["voice_id"] == voice_id), None)
-    model_id = req.model_id or (selected["model_id"] if selected else DEFAULT_MODEL_ID)
+    if selected is None:
+        raise HTTPException(status_code=404, detail=f"Voice '{voice_id}' not found")
+    
+    model_id = req.model_id or selected["model_id"]
     tokenizer, model, device = _load_model(model_id)
 
     if req.seed is not None:
         set_seed(req.seed)
 
     text = _uromanize(req.text)
+    logger.debug("Processing TTS request - original: %s...", req.text[:100])
+    logger.debug("Romanized: %s...", text[:100])
+    
     inputs = tokenizer(text, return_tensors="pt")
-    logger.warning("Original input",req.text)
-    logger.warning("\n Romanized Text", text)
     inputs = {k: v.to(device) for k, v in inputs.items()}
 
     with torch.no_grad():
@@ -204,8 +212,10 @@ def text_to_speech(
 
     audio_bytes = _wave_bytes(output, model.config.sampling_rate)
 
-    if output_format not in ("wav", "wav_22050", "wav_16000"):
+    supported_formats = ("wav", "wav_22050", "wav_16000")
+    if output_format not in supported_formats:
         logger.info("Unsupported output_format '%s'; defaulting to wav", output_format)
+        output_format = "wav"
 
     return Response(content=audio_bytes, media_type="audio/wav")
 
@@ -221,7 +231,10 @@ def text_to_speech_stream(
         logger.info("Unknown voice_id '%s'; using default voice", voice_id)
 
     selected = next((v for v in VOICE_CATALOG if v["voice_id"] == voice_id), None)
-    model_id = req.model_id or (selected["model_id"] if selected else DEFAULT_MODEL_ID)
+    if selected is None:
+        raise HTTPException(status_code=404, detail=f"Voice '{voice_id}' not found")
+    
+    model_id = req.model_id or selected["model_id"]
     tokenizer, model, device = _load_model(model_id)
 
     if req.seed is not None:
@@ -236,8 +249,10 @@ def text_to_speech_stream(
 
     audio_bytes = _wave_bytes(output, model.config.sampling_rate)
 
-    if output_format not in ("wav", "wav_22050", "wav_16000"):
+    supported_formats = ("wav", "wav_22050", "wav_16000")
+    if output_format not in supported_formats:
         logger.info("Unsupported output_format '%s'; defaulting to wav", output_format)
+        output_format = "wav"
 
     bytes_per_second = model.config.sampling_rate * 2
     chunk_size = max(1024, int(bytes_per_second * (chunk_ms / 1000.0)))
@@ -259,5 +274,5 @@ def root():
             "stt": "/v1/speech-to-text",
             "health": "/health",
         },
-        "notes": "This is an ElevenLabs-style TTS endpoint backed by facebook/mms-tts-amh.",
+        "notes": "FastAPI TTS/STT endpoints backed by facebook/mms-tts-amh.",
     }
